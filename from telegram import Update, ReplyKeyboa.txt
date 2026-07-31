@@ -1,0 +1,246 @@
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+import requests
+
+# Replace with your NEW BotFather token
+BOT_TOKEN = "8836687989:AAE8je-YBU8rqb_CmgMSqO22PPwUTeAXC88"
+
+
+def get_token_data(contract):
+    url = f"https://api.dexscreener.com/latest/dex/tokens/{contract}"
+
+    try:
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            return None
+
+        data = response.json()
+
+        if "pairs" not in data or len(data["pairs"]) == 0:
+            return None
+
+        pair = data["pairs"][0]
+
+        return {
+            "name": pair["baseToken"]["name"],
+            "symbol": pair["baseToken"]["symbol"],
+            "price": pair.get("priceUsd", "Unknown"),
+            "marketCap": pair.get("marketCap", "Unknown"),
+            "liquidity": pair["liquidity"]["usd"],
+            "volume": pair["volume"]["h24"],
+            "priceChange": pair["priceChange"]["h24"],
+            "fdv": pair.get("fdv", "Unknown"),
+            "url": pair["url"],
+        }
+
+    except Exception:
+        return None
+
+
+def calculate_ai_score(token):
+    score = 50
+
+    try:
+        liquidity = float(token["liquidity"])
+        volume = float(token["volume"])
+        market_cap = float(token["marketCap"])
+        change = float(token["priceChange"])
+    except Exception:
+        return 50, "🟡 WATCH", "🟡 MEDIUM"
+
+    if liquidity >= 500000:
+        score += 15
+    elif liquidity >= 100000:
+        score += 10
+    elif liquidity >= 50000:
+        score += 5
+
+    if volume >= 1000000:
+        score += 15
+    elif volume >= 250000:
+        score += 10
+    elif volume >= 50000:
+        score += 5
+
+    if market_cap >= 10000000:
+        score += 10
+    elif market_cap >= 1000000:
+        score += 5
+
+    if change >= 20:
+        score += 10
+    elif change >= 5:
+        score += 5
+    elif change <= -20:
+        score -= 10
+
+    score = max(0, min(score, 100))
+
+    if score >= 85:
+        signal = "🟢 STRONG BUY"
+        risk = "🟢 LOW"
+    elif score >= 70:
+        signal = "🟢 BUY"
+        risk = "🟡 MEDIUM"
+    elif score >= 50:
+        signal = "🟡 WATCH"
+        risk = "🟡 MEDIUM"
+    else:
+        signal = "🔴 AVOID"
+        risk = "🔴 HIGH"
+
+    return score, signal, risk
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        ["📄 Scan Token"],
+        ["🔥 Trending"],
+        ["🐋 Whale Wallets"],
+        ["⭐️ Premium"],
+        ["🆘 Help"],
+    ]
+
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+    )
+
+    await update.message.reply_text(
+        "🦍 Welcome to SOL HUNTERS AI\n\nChoose an option below.",
+        reply_markup=reply_markup,
+    )
+
+
+async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    # Waiting for contract address
+    if context.user_data.get("waiting_for_token"):
+        context.user_data["waiting_for_token"] = False
+
+        token = get_token_data(text)
+
+        if token:
+            score, signal, risk = calculate_ai_score(token)
+
+            report = f"""
+🦍 SOL HUNTERS AI REPORT
+
+🪙 Token: {token['name']} ({token['symbol']})
+
+💲 Price: ${token['price']}
+📈 Market Cap: ${token['marketCap']}
+💧 Liquidity: ${token['liquidity']}
+📊 24H Volume: ${token['volume']}
+📉 24H Change: {token['priceChange']}%
+🏦 FDV: ${token['fdv']}
+
+━━━━━━━━━━━━━━━━━━
+
+🤖 AI Score: {score}/100
+📢 Signal: {signal}
+⚠️ Risk: {risk}
+
+━━━━━━━━━━━━━━━━━━
+
+🔗 DexScreener
+{token['url']}
+
+━━━━━━━━━━━━━━━━━━
+Powered by SOL HUNTERS AI
+"""
+
+            await update.message.reply_text(report)
+
+        else:
+            await update.message.reply_text(
+                "❌ Token not found.\n\nPlease send a valid Solana contract address."
+            )
+
+        return
+
+    if text == "📄 Scan Token":
+        context.user_data["waiting_for_token"] = True
+        await update.message.reply_text(
+            "📩 Send me the Solana token contract address."
+        )
+
+    elif text == "🔥 Trending":
+        await update.message.reply_text(
+            """🔥 TRENDING
+
+1️⃣ BONK
+2️⃣ WIF
+3️⃣ POPCAT
+4️⃣ PENGU
+5️⃣ FARTCOIN
+
+(Real-time trending will be added in a future update.)
+"""
+        )
+
+    elif text == "🐋 Whale Wallets":
+        await update.message.reply_text(
+            """🐋 WHALE WALLETS
+
+• Smart wallet tracking
+• Large buys
+• Large sells
+• New whale entries
+
+(Coming soon.)
+"""
+        )
+
+    elif text == "⭐️ Premium":
+        await update.message.reply_text(
+            """⭐️ SOL HUNTERS PREMIUM
+
+✔️ Early Alpha
+✔️ AI Score
+✔️ Whale Alerts
+✔️ Entry Targets
+✔️ Exit Targets
+
+Contact:
+@Sol_Forge
+"""
+        )
+
+    elif text == "🆘 Help":
+        await update.message.reply_text(
+            """🆘 HELP
+
+📄 Scan Token
+Scan any Solana contract.
+
+🔥 Trending
+Shows trending Solana tokens.
+
+🐋 Whale Wallets
+Track smart money.
+
+⭐️ Premium
+Access premium trading signals.
+"""
+        )
+
+
+app = Application.builder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(
+    MessageHandler(filters.TEXT & ~filters.COMMAND, buttons)
+)
+
+print("🦍 SOL HUNTERS AI is running...")
+
+app.run_polling()
